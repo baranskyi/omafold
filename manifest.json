@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.baranskyi.omafold",
+  "name": "Omafold",
+  "version": "0.1.0",
+  "author": "Slava Baranskyi",
+  "license": "MIT",
+  "description": "A reveal-on-demand drawer that keeps the Omarchy bar tidy while preserving instant access to every widget.",
+  "repository": "https://github.com/baranskyi/omafold",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omafold",
+    "description": "Use this controller as a boundary between always-visible, hidden, and always-hidden bar widgets.",
+    "category": "System",
+    "aliases": [
+      "drawer",
+      "hidden-icons",
+      "menu-bar",
+      "fold",
+      "collapse",
+      "hide",
+      "tidy"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "collapseSide": "auto",
+      "revealOnHover": true,
+      "revealOnClick": true,
+      "animationDuration": 220,
+      "collapseDelay": 240,
+      "exclude": "",
+      "alwaysHidden": "",
+      "autoCollapse": 0,
+      "scrollReveal": false,
+      "arrowStyle": "chevron"
+    },
+    "schema": [
+      {
+        "key": "collapseSide",
+        "type": "enum",
+        "label": "Collapsible side",
+        "description": "Widgets on this side of the controller are managed by the drawer; widgets on the other side always stay visible. Auto hides the widgets on the side away from the section's screen edge, so the controller never slides out from under the pointer.",
+        "options": [
+          "auto",
+          "before",
+          "after"
+        ],
+        "defaultValue": "auto"
+      },
+      {
+        "key": "revealOnHover",
+        "type": "boolean",
+        "label": "Reveal on hover",
+        "description": "Reveal regular hidden widgets when the pointer enters the controller.",
+        "defaultValue": true
+      },
+      {
+        "key": "revealOnClick",
+        "type": "boolean",
+        "label": "Pin on click",
+        "description": "Left-click the controller to keep regular hidden widgets open until clicked again. Right-click always opens the options menu.",
+        "defaultValue": true
+      },
+      {
+        "key": "animationDuration",
+        "type": "integer",
+        "label": "Animation duration (ms)",
+        "description": "How long the reveal and collapse animation takes. Set to 0 for no animation.",
+        "min": 0,
+        "max": 1000,
+        "step": 20,
+        "defaultValue": 220
+      },
+      {
+        "key": "collapseDelay",
+        "type": "integer",
+        "label": "Collapse delay (ms)",
+        "description": "How long to wait after the pointer leaves before collapsing the drawer.",
+        "min": 0,
+        "max": 3000,
+        "step": 40,
+        "defaultValue": 240
+      },
+      {
+        "key": "exclude",
+        "type": "string",
+        "label": "Always-visible widget IDs",
+        "description": "Comma-separated widget IDs that stay visible even on the collapsible side. The options menu edits this list for you.",
+        "defaultValue": ""
+      },
+      {
+        "key": "alwaysHidden",
+        "type": "string",
+        "label": "Always-hidden widget IDs",
+        "description": "Comma-separated widget IDs on the collapsible side that stay hidden until you middle-click the controller or choose Show all in its menu.",
+        "defaultValue": ""
+      },
+      {
+        "key": "autoCollapse",
+        "type": "integer",
+        "label": "Auto-collapse (s)",
+        "description": "Fold a pinned drawer again after this many seconds without interaction. 0 keeps it open until you fold it.",
+        "min": 0,
+        "max": 600,
+        "step": 5,
+        "defaultValue": 0
+      },
+      {
+        "key": "scrollReveal",
+        "type": "boolean",
+        "label": "Scroll to reveal",
+        "description": "Scroll up on the controller to pin the drawer open, down to fold it.",
+        "defaultValue": false
+      },
+      {
+        "key": "arrowStyle",
+        "type": "enum",
+        "label": "Controller icon",
+        "description": "The controller glyph. Only the chevron turns to show which way the drawer opens.",
+        "options": [
+          "chevron",
+          "dots",
+          "ellipsis"
+        ],
+        "defaultValue": "chevron"
+      }
+    ]
+  }
+}

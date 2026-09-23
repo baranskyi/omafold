@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  model-and-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test the drawer model
+        run: npm test
+      - name: Check the manifest shape
+        run: |
+          jq -e '
+            .schemaVersion == 1
+            and .id == "io.github.baranskyi.omafold"
+            and .kinds == ["bar-widget"]
+            and .entryPoints.barWidget == "BarWidget.qml"
+          ' manifest.json
+          test -f BarWidget.qml && test -f OptionsMenu.qml && test -f DrawerModel.js && test -f README.md && test -f LICENSE
