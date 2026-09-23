@@ -2,3 +2,8 @@
 *.tmp
 .DS_Store
 node_modules/
+
+# Local agent instructions and release notes. They stay on the development
+# machine and out of the installed plugin, where coding agents could read them.
+AGENTS.md
+docs/
