@@ -22,6 +22,10 @@ BarWidget {
   property bool menuOpen: false
   readonly property bool opened: menuOpen
   property var backdrop: null
+  property var backdropRow: null
+  property var cachedBarRoot: null
+  property var drawerClickTargets: []
+  property var centerClickTargets: []
 
   readonly property var excludedIds: DrawerModel.normalizeList(setting("exclude", ""))
   readonly property var alwaysHiddenIds: DrawerModel.normalizeList(setting("alwaysHidden", ""))
@@ -98,19 +102,173 @@ BarWidget {
     return false
   }
 
+  // The bar resolves every press through one global list of click targets:
+  // it scans clickTargets in reverse registration order and calls triggerPress
+  // on the first target whose bounds contain the press, no matter which slot
+  // received it. An expanded drawer grows over the center section, so its
+  // icons share screen space with the center widgets, and whichever of the
+  // two was registered last wins the press. Moving the drawer's own targets
+  // to the end of the list while it is open makes its icons win their own
+  // overlaps; collapsed drawer slots are zero-width, so they never claim a
+  // press meant for something else.
+  // The bar root and the narrow api handed to third-party widgets both expose
+  // registerClickTarget, but only the root owns the full clickTargets list:
+  // the api keeps a plugin-scoped copy and is wired through _* hooks.
+  function isBarRoot(node) {
+    if (!node) return false
+    // qmllint disable missing-property
+    return typeof node.registerClickTarget === "function"
+      && typeof node.unregisterClickTarget === "function"
+      && node.moduleSlots !== undefined
+      && node._registerClickTarget === undefined
+    // qmllint enable missing-property
+  }
+
+  function barRootItem() {
+    if (isBarRoot(cachedBarRoot)) return cachedBarRoot
+    cachedBarRoot = null
+    if (isBarRoot(root.bar)) {
+      cachedBarRoot = root.bar
+      return cachedBarRoot
+    }
+    // Third-party widgets get a narrow api instead of the bar itself, so
+    // borrow the real bar object from a first-party widget: the packaged
+    // center widgets are handed the bar root as their `bar`.
+    var slots = allModuleSlots()
+    for (var i = 0; i < slots.length; i++) {
+      // qmllint disable missing-property
+      var item = slots[i] ? slots[i].activeItem : null
+      var bar = item ? item.bar : null
+      // qmllint enable missing-property
+      if (isBarRoot(bar)) {
+        cachedBarRoot = bar
+        return bar
+      }
+    }
+    return null
+  }
+
+  function findModuleSlots(node, depth, budget, out) {
+    if (!node || depth < 0 || budget.count >= 400) return
+    budget.count++
+    // qmllint disable missing-property
+    if (node.region !== undefined && node.entry !== undefined && node.activeItem !== undefined)
+      out.push(node)
+    // qmllint enable missing-property
+    var children = node.children
+    if (!children) return
+    for (var i = 0; i < children.length; i++)
+      findModuleSlots(children[i], depth - 1, budget, out)
+  }
+
+  // Walks up to the ancestor that also holds the center section, then
+  // collects every module slot under it, so the controller can see the
+  // center widgets its revealed icons overlap.
+  function allModuleSlots() {
+    var node = slotRow ? slotRow.parent : null
+    while (node) {
+      var out = []
+      findModuleSlots(node, 8, { count: 0 }, out)
+      for (var i = 0; i < out.length; i++)
+        // qmllint disable missing-property
+        if (out[i].region === "center") return out
+        // qmllint enable missing-property
+      node = node.parent
+    }
+    return []
+  }
+
+  function slotOwnsTarget(slots, target) {
+    var node = target
+    while (node) {
+      for (var i = 0; i < slots.length; i++) {
+        // qmllint disable missing-property
+        if (node === slots[i].activeItem) return true
+        // qmllint enable missing-property
+      }
+      node = node.parent
+    }
+    return false
+  }
+
+  function collectClickTargetGroups(barRoot) {
+    var centerSlots = []
+    var slots = allModuleSlots()
+    for (var i = 0; i < slots.length; i++)
+      // qmllint disable missing-property
+      if (slots[i].region === "center") centerSlots.push(slots[i])
+      // qmllint enable missing-property
+
+    var drawerSlots = combinedSlots(hiddenSlots, alwaysHiddenSlots)
+    if (ownerSlot) drawerSlots.push(ownerSlot)
+
+    var drawer = []
+    var center = []
+    var targets = barRoot.clickTargets
+    for (var t = 0; t < targets.length; t++) {
+      if (slotOwnsTarget(drawerSlots, targets[t])) drawer.push(targets[t])
+      else if (slotOwnsTarget(centerSlots, targets[t])) center.push(targets[t])
+    }
+    drawerClickTargets = drawer
+    centerClickTargets = center
+  }
+
+  function promoteDrawerClickTargets() {
+    var barRoot = barRootItem()
+    if (!barRoot) return
+    collectClickTargetGroups(barRoot)
+    for (var i = 0; i < drawerClickTargets.length; i++) {
+      barRoot.unregisterClickTarget(drawerClickTargets[i])
+      barRoot.registerClickTarget(drawerClickTargets[i])
+    }
+  }
+
+  // A center widget that reloads while the drawer is open lands back at the
+  // end of the list and steals its overlap again, so the poll re-checks the
+  // order and re-promotes only when it actually broke.
+  function clickTargetsPromotionHeld() {
+    var barRoot = barRootItem()
+    if (!barRoot || drawerClickTargets.length === 0) return false
+    var targets = barRoot.clickTargets
+    var firstDrawer = targets.length
+    var lastCenter = -1
+    var found = 0
+    for (var i = 0; i < targets.length; i++) {
+      if (indexOfSlot(drawerClickTargets, targets[i]) !== -1) {
+        found++
+        if (i < firstDrawer) firstDrawer = i
+      } else if (indexOfSlot(centerClickTargets, targets[i]) !== -1 && i > lastCenter) {
+        lastCenter = i
+      }
+    }
+    return found === drawerClickTargets.length && firstDrawer > lastCenter
+  }
+
   // The bar anchors its center section to the screen center while the side
   // sections stay pinned to the edges, so an expanded drawer grows over the
   // center widgets. Slots are transparent, which makes both unreadable. The
-  // backdrop is a Rectangle parented to the section's row: inside the row it
-  // sits behind the slots at z -1, and the whole row already draws above the
+  // backdrop is a Rectangle parented to the section's ModuleList loader, the
+  // row's own parent: the loaded row sits at (0,0) inside it, so slot x/y
+  // carry over unchanged, and the whole section already draws above the
   // center section, so the revealed widgets get a solid panel under them.
+  // It must not be a child of the row itself — the row is a positioner, so
+  // it would override the backdrop's x, and the backdrop's width would
+  // inflate the row, shifting the chevron out from under the pointer and
+  // making the hover open/collapse loop.
   function ensureBackdrop() {
-    if (backdrop || !slotRow || !ownerSlot || !drawerBackground) return
+    if (!slotRow || !ownerSlot || !drawerBackground) return
+    if (backdrop && backdropRow === slotRow) return
+    // The previous row (and the backdrop parented to its loader) is gone;
+    // drop the stale references without touching the destroyed objects.
+    backdrop = null
+    backdropRow = null
 
-    var node = backdropComponent.createObject(slotRow)
+    var host = slotRow.parent
+    if (!host) return
+    var node = backdropComponent.createObject(host)
     if (!node) return
     backdrop = node
-    node.destroyed.connect(function() { if (root.backdrop === node) root.backdrop = null })
+    backdropRow = slotRow
 
     var pad = backdropPadding
     if (root.vertical) {
@@ -363,6 +521,7 @@ BarWidget {
     if (expanded === open) return
     expanded = open
     if (!open) revealAlwaysHidden = false
+    if (open) promoteDrawerClickTargets()
 
     for (var i = 0; i < hiddenSlots.length; i++) animateSlot(hiddenSlots[i], open)
     for (var j = 0; j < alwaysHiddenSlots.length; j++)
@@ -489,6 +648,8 @@ BarWidget {
   function poll() {
     refreshSlots()
 
+    if (expanded && !clickTargetsPromotionHeld()) promoteDrawerClickTargets()
+
     if (pinnedOpen && autoCollapse > 0) {
       var now = Date.now()
       if (interactionActive()) lastInteractionAt = now
@@ -584,6 +745,20 @@ BarWidget {
       // qmllint enable missing-property
       radius: 8
       z: -1
+
+      // A slot's pointer area deliberately refuses plain clicks (it keeps the
+      // press for drag-reordering and lets the composed click propagate to the
+      // item below). Over the center section that propagation lands on a
+      // center slot, which opens the wrong widget's popup. This area sits in
+      // the same loader as the row, so it stacks above the center section but
+      // below every drawer slot: revealed widgets still get their clicks, and
+      // anything they don't claim ends here instead of under the bar.
+      MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        enabled: root.drawerBackground && (root.expanded || root.runningAnimations.length > 0)
+        onClicked: mouse.accepted = true
+      }
 
       Behavior on opacity {
         NumberAnimation {
