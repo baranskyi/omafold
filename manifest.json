@@ -38,7 +38,9 @@
       "alwaysHidden": "",
       "autoCollapse": 0,
       "scrollReveal": false,
-      "arrowStyle": "chevron"
+      "arrowStyle": "chevron",
+      "drawerBackground": true,
+      "drawerBackgroundOpacity": 100
     },
     "schema": [
       {
@@ -129,6 +131,23 @@
           "ellipsis"
         ],
         "defaultValue": "chevron"
+      },
+      {
+        "key": "drawerBackground",
+        "type": "boolean",
+        "label": "Drawer background",
+        "description": "Draw a solid panel behind the revealed widgets. The bar anchors its center section to the screen center, so an expanded side drawer grows over it; this panel keeps both readable.",
+        "defaultValue": true
+      },
+      {
+        "key": "drawerBackgroundOpacity",
+        "type": "integer",
+        "label": "Drawer background opacity (%)",
+        "description": "How solid the drawer background is. Lower values let the bar and whatever is behind it show through.",
+        "min": 10,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 100
       }
     ]
   }
