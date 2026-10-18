@@ -21,6 +21,7 @@ BarWidget {
   property double lastInteractionAt: 0
   property bool menuOpen: false
   readonly property bool opened: menuOpen
+  property var backdrop: null
 
   readonly property var excludedIds: DrawerModel.normalizeList(setting("exclude", ""))
   readonly property var alwaysHiddenIds: DrawerModel.normalizeList(setting("alwaysHidden", ""))
@@ -36,6 +37,10 @@ BarWidget {
   readonly property bool scrollReveal: DrawerModel.booleanValue(setting("scrollReveal", false), false)
   readonly property string arrowStyle: DrawerModel.normalizedArrowStyle(setting("arrowStyle", "chevron"))
   readonly property var arrow: DrawerModel.arrowGlyph(arrowStyle, vertical)
+  readonly property bool drawerBackground: DrawerModel.booleanValue(setting("drawerBackground", true), true)
+  readonly property real drawerBackgroundOpacity: DrawerModel.boundedInteger(
+    setting("drawerBackgroundOpacity", 100), 100, 10, 100) / 100
+  readonly property real backdropPadding: 6
   // `bar` is typed QtObject; for third-party widgets it is a PluginBarApi,
   // whose `shell` facade exposes updateEntryInline for the widget's own entry.
   // qmllint disable missing-property
@@ -91,6 +96,58 @@ BarWidget {
     ownerSlot = null
     slotRow = null
     return false
+  }
+
+  // The bar anchors its center section to the screen center while the side
+  // sections stay pinned to the edges, so an expanded drawer grows over the
+  // center widgets. Slots are transparent, which makes both unreadable. The
+  // backdrop is a Rectangle parented to the section's row: inside the row it
+  // sits behind the slots at z -1, and the whole row already draws above the
+  // center section, so the revealed widgets get a solid panel under them.
+  function ensureBackdrop() {
+    if (backdrop || !slotRow || !ownerSlot || !drawerBackground) return
+
+    var node = backdropComponent.createObject(slotRow)
+    if (!node) return
+    backdrop = node
+    node.destroyed.connect(function() { if (root.backdrop === node) root.backdrop = null })
+
+    var pad = backdropPadding
+    if (root.vertical) {
+      node.x = Qt.binding(function() { return 0 })
+      node.width = Qt.binding(function() { return root.slotRow ? root.slotRow.width : 0 })
+      node.y = Qt.binding(function() {
+        if (!root.ownerSlot) return 0
+        return root.collapseSide === "before" ? -pad : root.ownerSlot.y - pad
+      })
+      node.height = Qt.binding(function() {
+        if (!root.slotRow || !root.ownerSlot) return 0
+        return root.collapseSide === "before"
+          ? root.ownerSlot.y + root.ownerSlot.height + pad
+          : root.slotRow.height - root.ownerSlot.y + pad
+      })
+    } else {
+      node.y = Qt.binding(function() { return 0 })
+      node.height = Qt.binding(function() { return root.slotRow ? root.slotRow.height : 0 })
+      node.x = Qt.binding(function() {
+        if (!root.ownerSlot) return 0
+        return root.collapseSide === "before" ? -pad : root.ownerSlot.x - pad
+      })
+      node.width = Qt.binding(function() {
+        if (!root.slotRow || !root.ownerSlot) return 0
+        return root.collapseSide === "before"
+          ? root.ownerSlot.x + root.ownerSlot.width + pad
+          : root.slotRow.width - root.ownerSlot.x + pad
+      })
+    }
+
+    // Opacity, not visibility, so the panel fades with the reveal animation
+    // and a zero-size Rectangle never intercepts pointer events anyway.
+    node.opacity = Qt.binding(function() {
+      return root.drawerBackground && (root.expanded || root.runningAnimations.length > 0)
+        ? root.drawerBackgroundOpacity
+        : 0
+    })
   }
 
   function classifiedSlots() {
@@ -221,6 +278,7 @@ BarWidget {
 
   function refreshSlots() {
     if ((!ownerSlot || !slotRow) && !findOwner()) return
+    ensureBackdrop()
     var groups = classifiedSlots()
     if (sameSlots(hiddenSlots, groups.hidden)
         && sameSlots(alwaysHiddenSlots, groups.alwaysHidden)) return
@@ -516,6 +574,25 @@ BarWidget {
   }
 
   OptionsMenu { drawer: root }
+
+  Component {
+    id: backdropComponent
+
+    Rectangle {
+      // qmllint disable missing-property
+      color: root.bar.background
+      // qmllint enable missing-property
+      radius: 8
+      z: -1
+
+      Behavior on opacity {
+        NumberAnimation {
+          duration: root.animationDuration > 0 ? root.animationDuration : 140
+          easing.type: Easing.OutCubic
+        }
+      }
+    }
+  }
 
   Component {
     id: transitionComponent
